@@ -29,10 +29,11 @@ class mines_environment(Environment):
 	WORST = 3
 	GOAL = 4
 	randGenerator = random.Random()
+	fixedStartState=False;
 	startRow = [5,6,10,11]
 	startCol = 0
 	def env_init(self):
-		env_file = open("env1.csv","r")
+		env_file = open("env3.csv","r")
 		self.map = []
 	    	for l in env_file.readlines():
 			self.map += [[int(i) for i in l.strip().split(',')]]
@@ -41,7 +42,10 @@ class mines_environment(Environment):
 		return "VERSION RL-Glue-3.0 PROBLEMTYPE episodic DISCOUNTFACTOR 0.9 OBSERVATIONS INTS (0 143) ACTIONS INTS (0 3) REWARDS (-3.0 10.0) EXTRA SampleMinesEnvironment(C/C++) by Brian Tanner."
 	
 	def env_start(self):
-		stateValid=self.setAgentState(random.choice(self.startRow),self.startCol)
+		if self.fixedStartState == False:
+			stateValid=self.setAgentState(random.choice(self.startRow),self.startCol)
+		else:
+			stateValid=self.setAgentState(self.startRow,self.startCol)
 		returnObs=Observation()
 		returnObs.intArray=[self.calculateFlatState()]
 		return returnObs
@@ -172,6 +176,7 @@ class mines_environment(Environment):
 		if(self.checkValid(newRow,newCol)):
 			self.agentRow = newRow;
 			self.agentCol = newCol;
+		return;
 
 		stoch = random.Random()
 		if(stoch >= 0.5):
