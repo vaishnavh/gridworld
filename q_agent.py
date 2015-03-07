@@ -1,25 +1,3 @@
-# 
-# Copyright (C) 2008, Brian Tanner
-# 
-#http://rl-glue-ext.googlecode.com/
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-#  $Revision: 1011 $
-#  $Date: 2009-02-11 22:29:54 -0700 (Wed, 11 Feb 2009) $
-#  $Author: brian@tannerpages.com $
-#  $HeadURL: http://rl-library.googlecode.com/svn/trunk/projects/packages/examples/mines-sarsa-python/sample_q_agent.py $
-
 import random
 import sys
 import copy
@@ -30,32 +8,17 @@ from rlglue.types import Action
 from rlglue.types import Observation
 from rlglue.utils import TaskSpecVRLGLUE3
 from random import Random
+import math
 
-
-
-# This is a very simple Sarsa agent for discrete-action, discrete-state
-# environments.  It uses epsilon-greedy exploration.
-# 
-# We've made a decision to store the previous action and observation in 
-# their raw form, as structures.  This code could be simplified and you
-# could store them just as ints.
-
-
-# TO USE THIS Agent [order doesn't matter]
-# NOTE: I'm assuming the Python codec is installed an is in your Python path
-#   -  Start the rl_glue executable socket server on your computer
-#   -  Run the SampleMinesEnvironment and SampleExperiment from this or a
-#   different codec (Matlab, Python, Java, C, Lisp should all be fine)
-#   -  Start this agent like:
-#   $> python sample_q_agent.py
 
 class q_agent(Agent):
 	randGenerator=Random()
 	lastAction=Action()
 	lastObservation=Observation()
-	q_stepsize = 0.1
+	q_stepsize = 0.4
 	q_epsilon = 0.1
 	q_gamma = 0.9
+	episodeCount = 0
 	numStates = 0
 	numActions = 0
 	value_function = None
@@ -102,7 +65,10 @@ class q_agent(Agent):
 		thisIntAction=self.egreedy(theState)
 		returnAction=Action()
 		returnAction.intArray=[thisIntAction]
-		
+		self.q_epsilon = 0.1 + math.exp(-0.008*self.episodeCount)		
+		self.q_stepsize = 0.05 + math.exp(-0.008*self.episodeCount)		
+		#print self.q_epsilon
+		self.episodeCount += 1
 		self.lastAction=copy.deepcopy(returnAction)
 		self.lastObservation=copy.deepcopy(observation)
 
@@ -215,6 +181,10 @@ class q_agent(Agent):
 			print "Loaded."
 			return "message understood, loading policy"
 
+		if inMessage.startswith("reset_run"):
+			self.episodeCount = 0
+			print "Episode Reset."
+			return "message understood, resetting run"
 		return "SampleSarsaAgent(Python) does not understand your message."
 
 

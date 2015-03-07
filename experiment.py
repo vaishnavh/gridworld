@@ -2,76 +2,91 @@
 import sys
 import math
 import rlglue.RLGlue as RLGlue
-
-# TO USE THIS Experiment [order doesn't matter]
-# NOTE: I'm assuming the Python codec is installed an is in your Python path
-#   -  Start the rl_glue executable socket server on your computer
-#   -  Run the SampleSarsaAgent and SampleMinesEnvironment from this or a
-#   different codec (Matlab, Python, Java, C, Lisp should all be fine)
-#   -  Start this environment like:
-#   $> python sample_experiment.py
-
-# Experiment program that does some of the things that might be important when
-# running an experiment.  It runs an agent on the environment and periodically
-# asks the agent to "freeze learning": to stop updating its policy for a number
-# of episodes in order to get an estimate of the quality of what has been learned
-# so far.
-#
-# The experiment estimates statistics such as the mean and standard deviation of
-# the return gathered by the policy and writes those to a comma-separated value file
-# called results.csv.
-#
-# This experiment also shows off some other features that can be achieved easily
-# through the RL-Glue env/agent messaging system by freezing learning (described
-# above), having the environment start in specific starting states, and saving
-# and loading the agent's value function to/from a binary data file.
+import pickle
+import os
 
 
 
+#TODO
+# Understand why start state has L
+# Understand why top state has U
 
-#
-#	This function will freeze the agent's policy and test it after every 25 episodes.
-#
+learning_type = sys.argv[1]
+
+def print_policy(policy_file):
+	values = pickle.load(open(policy_file))
+
+	policy = []
+	for i in range(12):
+		# i  is the row
+		# j  is the column
+		row_policy = []
+		for j in range(12):
+			q = values[j*12+i]		
+			m = max(q)
+			action = [['L','R','U','D'][u] for u, v in enumerate(q) if v == m][0]
+			row_policy += [action]
+		policy += [row_policy]
+	return policy
+
+	
 def run_learning(run_no, fileName):
 
 	#Starting an episode
 	taskSpec = RLGlue.RL_init()
+	RLGlue.RL_agent_message("reset_run");
+	print("Running "+str(run_no))
 	#We could run one step at a time instead of one episode at a time */
 	#Start the episode */
 	steps = []
 	returns = []
-	for i in range(1,20):
+		
+	for i in range(1,500):
 		startResponse = RLGlue.RL_start()
 		stepResponse = RLGlue.RL_step()
+		#if startResponse.o.intArray[0] == 11 :
+		#	print(startResponse.o.intArray[0],stepResponse.a.intArray[0],stepResponse.o.intArray[0])
 		totalReturn = stepResponse.r
+
 		gamma = 0.9
 		x = 0
 		while (stepResponse.terminal != 1):
 		    stepResponse = RLGlue.RL_step()
 		    totalReturn += gamma*stepResponse.r
+
 		    gamma = gamma*0.9
-		    if x == 3000:
-			    break;
-		    x+=1
-		    
+		    #x+=1
+		    #if x%1000 == 0:
+		    #	    print x
 		totalSteps = RLGlue.RL_num_steps()
-		
-		print (i,totalReturn,totalSteps)
+		print (run_no, i,totalReturn,totalSteps)
 		steps += [totalSteps]
 		returns += [totalReturn]
-		
-	theFile = open(fileName+"_return.csv", "w");
+	policy_file = learning_type+"_"+str(run_no)+".p"
+	RLGlue.RL_agent_message("save_policy "+policy_file);
+	policy = print_policy(policy_file)
+	for row in policy:
+		print (row)
+	
+	theFile = open(fileName+"_return.csv", "a");
 	theFile.write(", ".join(map(str,returns)))
 	theFile.write("\n")
 	theFile.close();
-	theFile = open(fileName+"_steps.csv", "w");
+	theFile = open(fileName+"_steps.csv", "a");
 	theFile.write(", ".join(map(str,steps)))
 	theFile.close();
 	RLGlue.RL_cleanup()
+	print(str(run_no)+" done")
 	
 
-for i in xrange(0,50):
-	run_learning(i, "q_learning")
+if os.path.isfile(learning_type+"_return.csv"):
+	sys.exit()
+theFile = open(learning_type+"_return.csv","w")
+theFile.close()
+theFile = open(learning_type+"_steps.csv","w")
+theFile.close()
+for i in xrange(0,25):
+	run_learning(i, learning_type)
 	
 
 

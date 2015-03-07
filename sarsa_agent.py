@@ -1,25 +1,3 @@
-# 
-# Copyright (C) 2008, Brian Tanner
-# 
-#http://rl-glue-ext.googlecode.com/
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-#  $Revision: 1011 $
-#  $Date: 2009-02-11 22:29:54 -0700 (Wed, 11 Feb 2009) $
-#  $Author: brian@tannerpages.com $
-#  $HeadURL: http://rl-library.googlecode.com/svn/trunk/projects/packages/examples/mines-sarsa-python/sample_sarsa_agent.py $
-
 import random
 import sys
 import copy
@@ -30,35 +8,23 @@ from rlglue.types import Action
 from rlglue.types import Observation
 from rlglue.utils import TaskSpecVRLGLUE3
 from random import Random
+import math
 
 
-
-# This is a very simple Sarsa agent for discrete-action, discrete-state
-# environments.  It uses epsilon-greedy exploration.
-# 
-# We've made a decision to store the previous action and observation in 
-# their raw form, as structures.  This code could be simplified and you
-# could store them just as ints.
-
-
-# TO USE THIS Agent [order doesn't matter]
-# NOTE: I'm assuming the Python codec is installed an is in your Python path
-#   -  Start the rl_glue executable socket server on your computer
-#   -  Run the SampleMinesEnvironment and SampleExperiment from this or a
-#   different codec (Matlab, Python, Java, C, Lisp should all be fine)
-#   -  Start this agent like:
-#   $> python sample_sarsa_agent.py
 
 class sarsa_agent(Agent):
 	randGenerator=Random()
 	lastAction=Action()
 	lastObservation=Observation()
-	sarsa_stepsize = 0.1
+	sarsa_stepsize = 0.4
 	sarsa_epsilon = 0.1
 	sarsa_gamma = 0.9
+	episodeCount = 0
 	numStates = 0
 	numActions = 0
 	value_function = None
+	elig = None
+	sarsa_lambda = float(sys.argv[1])
 	
 	policyFrozen=False
 	exploringFrozen=False
@@ -79,6 +45,9 @@ class sarsa_agent(Agent):
 			self.numActions=TaskSpec.getIntActions()[0][1]+1;
 			
 			self.value_function=[self.numActions*[0.0] for i in range(self.numStates)]
+			self.elig=[self.numActions*[0.0] for i in range(self.numStates)]
+			self.episodeCount = 0
+
 
 		else:
 			print "Task Spec could not be parsed: "+taskSpecString;
@@ -102,7 +71,13 @@ class sarsa_agent(Agent):
 		thisIntAction=self.egreedy(theState)
 		returnAction=Action()
 		returnAction.intArray=[thisIntAction]
-		
+		self.sarsa_epsilon = 0.1 + math.exp(-0.008*self.episodeCount)		
+		if self.sarsa_lambda == 1.00:
+			self.sarsa_stepsize = 0.4
+		else:
+			self.sarsa_stepsize = 0.05 + math.exp(-0.008*self.episodeCount)		
+		#print self.sarsa_epsilon
+		self.episodeCount += 1
 		self.lastAction=copy.deepcopy(returnAction)
 		self.lastObservation=copy.deepcopy(observation)
 
@@ -119,11 +94,15 @@ class sarsa_agent(Agent):
 		Q_sa=self.value_function[lastState][lastAction]
 		Q_sprime_aprime=self.value_function[newState][newIntAction]
 
-		new_Q_sa=Q_sa + self.sarsa_stepsize * (reward + self.sarsa_gamma * Q_sprime_aprime - Q_sa)
-
-
 		if not self.policyFrozen:
-			self.value_function[lastState][lastAction]=new_Q_sa
+			delta = reward + self.sarsa_gamma*Q_sprime_aprime - Q_sa
+			self.elig[lastState][lastAction] += 1
+			for x in xrange(self.numStates):
+				for a in xrange(4):
+					self.value_function[x][a] += self.sarsa_stepsize * delta * self.elig[x][a]
+					self.elig[x][a] = self.sarsa_gamma*self.sarsa_lambda*self.elig[x][a]
+			#new_Q_sa=Q_sa + self.sarsa_stepsize * (reward + self.sarsa_gamma * Q_sprime_aprime - Q_sa)
+
 
 		returnAction=Action()
 		returnAction.intArray=[newIntAction]
@@ -138,11 +117,18 @@ class sarsa_agent(Agent):
 		lastAction=self.lastAction.intArray[0]
 
 		Q_sa=self.value_function[lastState][lastAction]
+		
+		delta=  (reward - Q_sa)
 
-		new_Q_sa=Q_sa + self.sarsa_stepsize * (reward - Q_sa)
+	
+		self.elig[lastState][lastAction] += 1
+		for x in xrange(self.numStates):
+			for a in xrange(4):
+				self.value_function[x][a] += self.sarsa_stepsize * delta * self.elig[x][a]
+				self.elig[x][a] = self.sarsa_gamma*self.sarsa_lambda*self.elig[x][a]
+		#new_Q_sa=Q_sa + self.sarsa_stepsize * (reward + self.sarsa_gamma * Q_sprime_aprime - Q_sa)
 
-		if not self.policyFrozen:
-			self.value_function[lastState][lastAction]=new_Q_sa
+
 
 	
 	def agent_cleanup(self):
@@ -214,6 +200,10 @@ class sarsa_agent(Agent):
 			print "Loaded."
 			return "message understood, loading policy"
 
+		if inMessage.startswith("reset_run"):
+			self.episodeCount = 0
+			print "Episode Reset."
+			return "message understood, resetting run"
 		return "SampleSarsaAgent(Python) does not understand your message."
 
 
