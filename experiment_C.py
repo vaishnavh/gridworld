@@ -12,6 +12,10 @@ import pickle
 # Understand why top state has U
 
 learning_type = sys.argv[1]
+trials = 25
+if(len(sys.argv) > 2):
+	trials = int(sys.argv[2])
+	
 
 def print_policy(policy_file):
 	values = pickle.load(open(policy_file))
@@ -86,7 +90,7 @@ theFile = open(learning_type+"_return.csv", "w");
 theFile.close();
 theFile = open(learning_type+"_steps.csv", "w");
 theFile.close();
-for i in xrange(0,25):
+for i in xrange(0,trials):
 	run_learning(i, learning_type)
 	
 

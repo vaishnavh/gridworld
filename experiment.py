@@ -1,9 +1,9 @@
 
 import sys
+import os
 import math
 import rlglue.RLGlue as RLGlue
 import pickle
-import os
 
 
 
@@ -12,23 +12,10 @@ import os
 # Understand why top state has U
 
 learning_type = sys.argv[1]
-
-def print_policy(policy_file):
-	values = pickle.load(open(policy_file))
-
-	policy = []
-	for i in range(12):
-		# i  is the row
-		# j  is the column
-		row_policy = []
-		for j in range(12):
-			q = values[j*12+i]		
-			m = max(q)
-			action = [['L','R','U','D'][u] for u, v in enumerate(q) if v == m][0]
-			row_policy += [action]
-		policy += [row_policy]
-	return policy
-
+trials = 25
+if(len(sys.argv) > 2):
+	trials = int(sys.argv[2])
+	
 	
 def run_learning(run_no, fileName):
 
@@ -38,9 +25,9 @@ def run_learning(run_no, fileName):
 	print("Running "+str(run_no))
 	#We could run one step at a time instead of one episode at a time */
 	#Start the episode */
+
 	steps = []
 	returns = []
-		
 	for i in range(1,500):
 		startResponse = RLGlue.RL_start()
 		stepResponse = RLGlue.RL_step()
@@ -81,11 +68,12 @@ def run_learning(run_no, fileName):
 
 if os.path.isfile(learning_type+"_return.csv"):
 	sys.exit()
-theFile = open(learning_type+"_return.csv","w")
-theFile.close()
-theFile = open(learning_type+"_steps.csv","w")
-theFile.close()
-for i in xrange(0,25):
+		
+theFile = open(learning_type+"_return.csv", "w");
+theFile.close();
+theFile = open(learning_type+"_steps.csv", "w");
+theFile.close();
+for i in xrange(0,trials):
 	run_learning(i, learning_type)
 	
 

@@ -16,13 +16,15 @@ class mc_agent(Agent):
 	lastAction=Action()
 	lastObservation=Observation()
 	baseline = 0.0
-	mc_stepsize = 0.4
-	mc_epsilon = 0.1
+	lastReturn = 0.0
+	timeStep = 0
+	mc_stepsize = 0.0001
 	mc_gamma = 0.9
 	episodeCount = 0
 	numStates = 0
 	numActions = 0
 	theta = None
+	preferences = None
 	delta = None
 	value_function = None
 	
@@ -46,7 +48,9 @@ class mc_agent(Agent):
 			
 			self.episodeCount = 0.0
 			self.value_function=[self.numActions*[0.0] for i in range(self.numStates)]
-			self.theta = [self.numAction*[0.0] for i in range(24)]
+			self.theta = [self.numActions*[0.0] for i in range(24)]
+			self.delta = [self.numActions*[0.0] for i in range(24)]
+			self.preferences = [self.numActions*[0.25] for i in range(self.numStates)]
 			self.baseline = 0.0
 
 		else:
@@ -55,37 +59,15 @@ class mc_agent(Agent):
 		self.lastAction=Action()
 		self.lastObservation=Observation()
 		
-	'''
-	def get_row(self,state):
-		return state%12
-
-	def get_col(self,state):
-		return int(state/12)
-
-
-	def preferences(self, state):
-		row = state%12
-		col = state/12
-		row_pref = self.theta[row]
-		col_pref = self.theta[12 + col]
-		pref = [math.exp(row_pref[i] + col_pref[i]) for i in xrange(4)]
-		sum_pref = sum(pref)
-		pref = [pref/sum_pref for i in xrange(4)]
-		return pref
-	'''
 		
 
 	def softmax(self, state):
-		row = state%12
-		col = state/12
-		row_pref = self.theta[row]
-		col_pref = self.theta[12 + col]
-		pref = [math.exp(row_pref[i] + col_pref[i]) for i in xrange(4)]
-		sum_pref = sum(pref)
-		pref = [pref/sum_pref for i in xrange(4)]
+		pref = self.preferences[state]
+
+		#print pref
 		#pref = self.preferences(state)
 		choose = self.randGenerator.random()
-		for i in xrange(4):
+		for i in xrange(3):
 			if choose <= pref[i]:
 				return i
 			choose -= pref[i]
@@ -98,12 +80,15 @@ class mc_agent(Agent):
 		thisIntAction=self.softmax(theState)
 		returnAction=Action()
 		returnAction.intArray=[thisIntAction]
-		self.delta = [self.numAction*[0.0] for i in range(24)]
-		self.mc_epsilon = 0.1 + math.exp(-0.008*self.episodeCount)		
-		self.mc_stepsize = 0.05 + math.exp(-0.008*self.episodeCount)		
+		#self.mc_stepsize = 0.05 + math.exp(-0.008*self.episodeCount)		
+		#self.mc_stepsize = math.exp(-0.003*self.episodeCount) - 0.3
+		if self.episodeCount != 0:
+			self.update_policy()
 		self.episodeCount += 1
 		self.lastAction=copy.deepcopy(returnAction)
 		self.lastObservation=copy.deepcopy(observation)
+		self.lastReturn = 0.0
+		self.timeStep = 1.0
 
 		return returnAction
 	
@@ -112,13 +97,15 @@ class mc_agent(Agent):
 		newState=observation.intArray[0]
 		lastState=self.lastObservation.intArray[0]
 		lastAction=self.lastAction.intArray[0]
-
+		self.lastReturn += reward*self.timeStep
+		self.timeStep *= self.mc_gamma
 		#Update delta for the appropiate parameters
-		row = lastState % 12
-		col = lastState / 12
+		pref = self.preferences[lastState]
+		row = lastState/12
+		col = lastState%12
 		for a in xrange(4):
-			self.delta[row][a] += (a == lastAction) - self.theta[row][a]
-			self.delta[col + 12][a] += (a == lastAction) - self.theta[col + 12][a]
+			self.delta[row][a] += (a == lastAction) - pref[a]
+			self.delta[col + 12][a] += (a == lastAction) - pref[a]
 
 		newIntAction=self.softmax(newState)
 
@@ -134,18 +121,36 @@ class mc_agent(Agent):
 		lastState=self.lastObservation.intArray[0]
 		lastAction=self.lastAction.intArray[0]
 
-		#Update delta for the appropiate parameters
-		row = lastState % 12
-		col = lastState / 12
-		for a in xrange(4):
-			self.delta[row][a] += (a == lastAction) - self.theta[row][a]
-			self.delta[col + 12][a] += (a == lastAction) - self.theta[col + 12][a]
-		Q_sa=self.value_function[lastState][lastAction]
 
-	def update_policy(self, lastReturn):
-		factor = self.mc_stepsize*(lastReturn - self.baseline)
-		self.theta = [self.theta[i] + factor*self.delta[i] for i in xrange(24)]
-		self.baseline = (self.baseline*self.episodeCount + lastReturn)/episodeCount
+		self.lastReturn += reward*self.timeStep
+		#Update delta for the appropiate parameters
+		pref = self.preferences[lastState]
+
+		row = lastState/12
+		col = lastState%12
+		for a in xrange(4):
+			self.delta[row][a] += (a == lastAction) - pref[a]
+			self.delta[col + 12][a] += (a == lastAction) - pref[a]
+
+
+
+	def update_policy(self):
+		factor = self.mc_stepsize*(self.lastReturn-self.baseline)
+		#print (factor, self.baseline)
+		self.theta = [[self.theta[i][a] + factor*self.delta[i][a] for a in range(4)] for i in xrange(24)]
+		#self.baseline = (self.baseline*self.episodeCount + lastReturn)/self.episodeCount
+		for state in range(self.numStates):
+			row = state%12
+			col = state/12
+			row_pref = self.theta[row]
+			col_pref = self.theta[12 + col]
+			pref = [math.exp(row_pref[i] + col_pref[i]) for i in xrange(4)]
+			sum_pref = sum(pref)
+			pref = [pref[i]/sum_pref for i in xrange(4)]
+			self.preferences[state] = pref
+		#self.baseline += 2*(self.lastReturn-self.baseline)/(self.episodeCount)
+		self.delta = [self.numActions*[0.0] for i in range(24)]
+		
 
 	
 	def agent_cleanup(self):
@@ -153,12 +158,12 @@ class mc_agent(Agent):
 
 	def save_value_function(self, fileName):
 		theFile = open(fileName, "w")
-		pickle.dump(self.theta, theFile)
+		pickle.dump(self.preferences, theFile)
 		theFile.close()
 
 	def load_value_function(self, fileName):
 		theFile = open(fileName, "r")
-		self.theta=pickle.load(theFile)
+		self.preferences=pickle.load(theFile)
 		theFile.close()
 	
 	def agent_message(self,inMessage):
