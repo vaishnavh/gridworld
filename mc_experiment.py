@@ -14,6 +14,7 @@ import os
 learning_type = sys.argv[1]
 no_trials = int(sys.argv[2])
 no_episodes = int(sys.argv[3])
+batch_size = int(sys.argv[4])
 
 def print_policy(policy_file):
 	preferences = pickle.load(open(policy_file))
@@ -41,6 +42,7 @@ def run_learning(run_no, fileName):
 	#Start the episode */
 	steps = []
 	returns = []
+	rewards = []
 		
 	for i in range(1,no_episodes):
 		startResponse = RLGlue.RL_start()
@@ -48,12 +50,14 @@ def run_learning(run_no, fileName):
 		#if startResponse.o.intArray[0] == 11 :
 		#	print(startResponse.o.intArray[0],stepResponse.a.intArray[0],stepResponse.o.intArray[0])
 		totalReturn = stepResponse.r
+		totalReward = stepResponse.r
 
 		gamma = 0.9
 		x = 0
-		while (stepResponse.terminal != 1 and x < 1000):
+		while (stepResponse.terminal != 1):
 		    stepResponse = RLGlue.RL_step()
 		    totalReturn += gamma*stepResponse.r
+		    totalReward += stepResponse.r
 
 		    gamma = gamma*0.9
 		    x+=1
@@ -63,12 +67,18 @@ def run_learning(run_no, fileName):
 		print (run_no, i,totalReturn,totalSteps)
 		steps += [totalSteps]
 		returns += [totalReturn]
-		#RLGlue.RL_agent_message("update_policy "+str(totalReturn));
+		rewards += [totalReward]
+		if i%batch_size == 0:
+			RLGlue.RL_agent_message("update_policy");
 	policy_file = learning_type+"_"+str(run_no)+".p"
 	RLGlue.RL_agent_message("save_policy "+policy_file);
 	policy = print_policy(policy_file)
 	for row in policy:
 		print (row)
+	theFile = open(fileName+"_rewards.csv", "a");
+	theFile.write(", ".join(map(str,rewards)))
+	theFile.write("\n")
+	theFile.close();
 	
 	theFile = open(fileName+"_return.csv", "a");
 	theFile.write(", ".join(map(str,returns)))
@@ -76,6 +86,7 @@ def run_learning(run_no, fileName):
 	theFile.close();
 	theFile = open(fileName+"_steps.csv", "a");
 	theFile.write(", ".join(map(str,steps)))
+	theFile.write("\n")
 	theFile.close();
 	RLGlue.RL_cleanup()
 	print(str(run_no)+" done")

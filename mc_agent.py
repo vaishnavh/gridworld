@@ -10,6 +10,7 @@ from rlglue.utils import TaskSpecVRLGLUE3
 from random import Random
 import math
 
+SIZE=10.0
 
 class mc_agent(Agent):
 	randGenerator=Random()
@@ -18,7 +19,8 @@ class mc_agent(Agent):
 	baseline = 0.0
 	lastReturn = 0.0
 	timeStep = 0
-	mc_stepsize = 0.0001
+	mc_stepsize = 0.0000001
+	
 	mc_gamma = 0.9
 	episodeCount = 0
 	numStates = 0
@@ -30,6 +32,7 @@ class mc_agent(Agent):
 	
 	policyFrozen=False
 	exploringFrozen=False
+	lastBatch = 0.0
 	
 	def agent_init(self,taskSpecString):
 		TaskSpec = TaskSpecVRLGLUE3.TaskSpecParser(taskSpecString)
@@ -52,6 +55,7 @@ class mc_agent(Agent):
 			self.delta = [self.numActions*[0.0] for i in range(24)]
 			self.preferences = [self.numActions*[0.25] for i in range(self.numStates)]
 			self.baseline = 0.0
+			self.lastBatch = 0.0
 
 		else:
 			print "Task Spec could not be parsed: "+taskSpecString;
@@ -82,9 +86,7 @@ class mc_agent(Agent):
 		returnAction.intArray=[thisIntAction]
 		#self.mc_stepsize = 0.05 + math.exp(-0.008*self.episodeCount)		
 		#self.mc_stepsize = math.exp(-0.003*self.episodeCount) - 0.3
-		if self.episodeCount != 0:
-			self.update_policy()
-		self.episodeCount += 1
+		#self.episodeCount += 1
 		self.lastAction=copy.deepcopy(returnAction)
 		self.lastObservation=copy.deepcopy(observation)
 		self.lastReturn = 0.0
@@ -101,8 +103,8 @@ class mc_agent(Agent):
 		self.timeStep *= self.mc_gamma
 		#Update delta for the appropiate parameters
 		pref = self.preferences[lastState]
-		row = lastState/12
-		col = lastState%12
+		row = lastState%12
+		col = lastState/12
 		for a in xrange(4):
 			self.delta[row][a] += (a == lastAction) - pref[a]
 			self.delta[col + 12][a] += (a == lastAction) - pref[a]
@@ -126,19 +128,21 @@ class mc_agent(Agent):
 		#Update delta for the appropiate parameters
 		pref = self.preferences[lastState]
 
-		row = lastState/12
-		col = lastState%12
+		row = lastState%12
+		col = lastState/12
 		for a in xrange(4):
 			self.delta[row][a] += (a == lastAction) - pref[a]
 			self.delta[col + 12][a] += (a == lastAction) - pref[a]
+		factor = self.mc_stepsize*(self.lastReturn-self.baseline)
+		self.delta = [[self.delta[i][a] + factor*self.delta[i][a] for a in range(4)] for i in xrange(24)]
+		self.lastBatch += self.lastReturn
 
 
 
 	def update_policy(self):
-		factor = self.mc_stepsize*(self.lastReturn-self.baseline)
+		#factor = self.mc_stepsize*(self.lastReturn-self.baseline)
 		#print (factor, self.baseline)
-		self.theta = [[self.theta[i][a] + factor*self.delta[i][a] for a in range(4)] for i in xrange(24)]
-		#self.baseline = (self.baseline*self.episodeCount + lastReturn)/self.episodeCount
+		self.theta = [[self.theta[i][a] + self.delta[i][a] for a in range(4)] for i in xrange(24)]
 		for state in range(self.numStates):
 			row = state%12
 			col = state/12
@@ -150,6 +154,12 @@ class mc_agent(Agent):
 			self.preferences[state] = pref
 		#self.baseline += 2*(self.lastReturn-self.baseline)/(self.episodeCount)
 		self.delta = [self.numActions*[0.0] for i in range(24)]
+		#self.baseline = (self.baseline*self.episodeCount + self.lastBatch)/(self.episodeCount + 100)
+		self.baseline = 0.3*self.baseline +0.4*self.lastBatch/SIZE
+		#self.baseline = self.lastBatch/100
+		self.lastBatch = 0.0
+		self.episodeCount += SIZE
+		
 		
 
 	
@@ -214,7 +224,7 @@ class mc_agent(Agent):
 
 		if inMessage.startswith("update_policy"):
 			splitString=inMessage.split(" ");
-			self.update_policy(float(splitString[1]))
+			self.update_policy()
 			return ""
 		#Message Description
 	 	# load_policy FILENAME

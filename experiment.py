@@ -61,6 +61,7 @@ def run_learning(run_no, fileName):
 	theFile.close();
 	theFile = open(fileName+"_steps.csv", "a");
 	theFile.write(", ".join(map(str,steps)))
+	theFile.write("\n")
 	theFile.close();
 	RLGlue.RL_cleanup()
 	print(str(run_no)+" done")
