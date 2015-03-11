@@ -44,6 +44,7 @@ def run_learning(run_no, fileName):
 	returns = []
 	rewards = []
 		
+	RLGlue.RL_agent_message("set_batch_size "+str(batch_size));
 	for i in range(1,no_episodes):
 		startResponse = RLGlue.RL_start()
 		stepResponse = RLGlue.RL_step()
@@ -51,6 +52,7 @@ def run_learning(run_no, fileName):
 		#	print(startResponse.o.intArray[0],stepResponse.a.intArray[0],stepResponse.o.intArray[0])
 		totalReturn = stepResponse.r
 		totalReward = stepResponse.r
+		totalSteps = 0
 
 		gamma = 0.9
 		x = 0
@@ -61,9 +63,14 @@ def run_learning(run_no, fileName):
 
 		    gamma = gamma*0.9
 		    x+=1
+		    if i > batch_size and x > 2500:
+			totalSteps += x
+			x = 0
+		    	RLGlue.RL_agent_message("force_reset");
 		    #if x%1000 == 0:
 		    #	    print x
-		totalSteps = RLGlue.RL_num_steps()
+		#totalSteps = RLGlue.RL_num_steps()
+		totalSteps = x
 		print (run_no, i,totalReturn,totalSteps)
 		steps += [totalSteps]
 		returns += [totalReturn]

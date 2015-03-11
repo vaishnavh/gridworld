@@ -10,7 +10,8 @@ from rlglue.utils import TaskSpecVRLGLUE3
 from random import Random
 import math
 
-SIZE=10.0
+#SIZE=float(sys.argv[1])
+STEP=float(sys.argv[1])
 
 class mc_agent(Agent):
 	randGenerator=Random()
@@ -19,7 +20,8 @@ class mc_agent(Agent):
 	baseline = 0.0
 	lastReturn = 0.0
 	timeStep = 0
-	mc_stepsize = 0.0000001
+	mc_stepsize = STEP
+	SIZE = 0.0
 	
 	mc_gamma = 0.9
 	episodeCount = 0
@@ -28,6 +30,7 @@ class mc_agent(Agent):
 	theta = None
 	preferences = None
 	delta = None
+	curr_delta = None
 	value_function = None
 	
 	policyFrozen=False
@@ -53,6 +56,7 @@ class mc_agent(Agent):
 			self.value_function=[self.numActions*[0.0] for i in range(self.numStates)]
 			self.theta = [self.numActions*[0.0] for i in range(24)]
 			self.delta = [self.numActions*[0.0] for i in range(24)]
+			self.curr_delta = [self.numActions*[0.0] for i in range(24)]
 			self.preferences = [self.numActions*[0.25] for i in range(self.numStates)]
 			self.baseline = 0.0
 			self.lastBatch = 0.0
@@ -84,9 +88,12 @@ class mc_agent(Agent):
 		thisIntAction=self.softmax(theState)
 		returnAction=Action()
 		returnAction.intArray=[thisIntAction]
+		self.curr_delta = [self.numActions*[0.0] for i in range(24)]
 		#self.mc_stepsize = 0.05 + math.exp(-0.008*self.episodeCount)		
 		#self.mc_stepsize = math.exp(-0.003*self.episodeCount) - 0.3
-		#self.episodeCount += 1
+		self.episodeCount += 1
+		#if self.episodeCount == 400:
+		#	self.mc_stepsize/=2.0
 		self.lastAction=copy.deepcopy(returnAction)
 		self.lastObservation=copy.deepcopy(observation)
 		self.lastReturn = 0.0
@@ -106,8 +113,8 @@ class mc_agent(Agent):
 		row = lastState%12
 		col = lastState/12
 		for a in xrange(4):
-			self.delta[row][a] += (a == lastAction) - pref[a]
-			self.delta[col + 12][a] += (a == lastAction) - pref[a]
+			self.curr_delta[row][a] += (a == lastAction) - pref[a]
+			self.curr_delta[col + 12][a] += (a == lastAction) - pref[a]
 
 		newIntAction=self.softmax(newState)
 
@@ -130,19 +137,21 @@ class mc_agent(Agent):
 
 		row = lastState%12
 		col = lastState/12
-		for a in xrange(4):
-			self.delta[row][a] += (a == lastAction) - pref[a]
-			self.delta[col + 12][a] += (a == lastAction) - pref[a]
 		factor = self.mc_stepsize*(self.lastReturn-self.baseline)
-		self.delta = [[self.delta[i][a] + factor*self.delta[i][a] for a in range(4)] for i in xrange(24)]
+		for a in xrange(4):
+			self.curr_delta[row][a] += (a == lastAction) - pref[a]
+			self.curr_delta[col + 12][a] += (a == lastAction) - pref[a]
+		self.delta = [[self.delta[i][a] + factor*self.curr_delta[i][a] for a in range(4)] for i in xrange(24)]
+		self.lastBatch += self.lastReturn
+
+	def force_end(self):
+		factor = self.mc_stepsize*(self.lastReturn-self.baseline)
+		self.delta = [[self.delta[i][a] + factor*self.curr_delta[i][a] for a in range(4)] for i in xrange(24)]
 		self.lastBatch += self.lastReturn
 
 
 
-	def update_policy(self):
-		#factor = self.mc_stepsize*(self.lastReturn-self.baseline)
-		#print (factor, self.baseline)
-		self.theta = [[self.theta[i][a] + self.delta[i][a] for a in range(4)] for i in xrange(24)]
+	def update_preferences(self):
 		for state in range(self.numStates):
 			row = state%12
 			col = state/12
@@ -152,13 +161,24 @@ class mc_agent(Agent):
 			sum_pref = sum(pref)
 			pref = [pref[i]/sum_pref for i in xrange(4)]
 			self.preferences[state] = pref
-		#self.baseline += 2*(self.lastReturn-self.baseline)/(self.episodeCount)
+	
+
+	def force_reset(self):
+		self.theta = [[self.theta[i][a]/2.0 for a in range(4)] for i in xrange(24)]
+		self.update_preferences()
+		
+
+
+
+	def update_policy(self):
+		#factor = self.mc_stepsize*(self.lastReturn-self.baseline)
+		#print (factor, self.baseline)
+		self.theta = [[self.theta[i][a] + self.delta[i][a] for a in range(4)] for i in xrange(24)]
+		self.update_preferences()
 		self.delta = [self.numActions*[0.0] for i in range(24)]
-		#self.baseline = (self.baseline*self.episodeCount + self.lastBatch)/(self.episodeCount + 100)
-		self.baseline = 0.3*self.baseline +0.4*self.lastBatch/SIZE
-		#self.baseline = self.lastBatch/100
+		self.baseline = 0.4*self.baseline +0.6*self.lastBatch/self.SIZE
 		self.lastBatch = 0.0
-		self.episodeCount += SIZE
+		self.episodeCount += self.SIZE
 		
 		
 
@@ -236,6 +256,24 @@ class mc_agent(Agent):
 			self.load_value_function(splitString[1])
 			print "Loaded."
 			return "message understood, loading policy"
+		
+		if inMessage.startswith("set_batch_size"):
+			splitString=inMessage.split(" ")
+			self.SIZE = float(splitString[1])
+			print "Setting size."
+			return "message understood, setting size"
+
+	
+		if inMessage.startswith("force_end"):
+			self.force_end()
+			print "Forcing end"
+			return "message understood, forcing an end"
+
+	
+		if inMessage.startswith("force_reset"):
+			self.force_reset()
+			print "Forcing reset"
+			return "message understood, force resetting"
 
 		#if inMessage.startswith("reset_run"):
 		#	self.episodeCount = 0
